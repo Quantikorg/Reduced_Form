@@ -189,9 +189,9 @@ document.getElementById('stressedPrice').innerText=((stressedPrice/totalNotional
 document.getElementById('stressedPD').innerText=(stressedPD*100).toFixed(2)+'%';
 document.getElementById('stressedCumPD').innerText=(stressedCumPD*100).toFixed(2)+'%';
 document.getElementById('stressedEL').innerText=Math.round(stressedEL).toLocaleString();
-drawStressChart(lines,totalNotional,stressInput);
+drawStressChart(lines,totalNotional,stressInput,weightedEL);
 }
-function drawStressChart(lines,totalNotional,selectedStress){
+function drawStressChart(lines,totalNotional,selectedStress,basePortfolioEL){
 const canvas=document.getElementById('stressChart');
 canvas.width=canvas.parentElement.clientWidth-40;
 canvas.height=320;
@@ -249,9 +249,9 @@ ctx.fillText(i+'%',x-10,canvas.height-padding+20);
 }
 ctx.fillText(Math.round(maxLoss).toLocaleString(),10,padding+5);
 ctx.fillText(Math.round(minLoss).toLocaleString(),10,canvas.height-padding);
-const baseIndex=10;
+const baseIndex=Math.round(0-stressMin);
 const selectedIndex=Math.round(selectedStress-stressMin);
-const baseValue=expectedLosses[baseIndex]||0;
+const baseValue=basePortfolioEL || expectedLosses[baseIndex] || 0;
 const stressedValue=expectedLosses[selectedIndex]||0;
 const zeroStressX = padding + ((0 - stressMin) / (stressMax - stressMin)) * chartWidth;
 ctx.fillStyle='#16a34a';
