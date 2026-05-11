@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reduced-Form Bond Pricer</title>
+<style>
+:root{--bg:#ffffff;--card:#f5f5f5;--muted:#555555;--accent:#7c3aed;--dropdown-bg:#fff8c4;}
+body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#fff;color:#111}
+.wrap{max-width:1200px;margin:36px auto;padding:28px;border-radius:14px;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.05)}
+h1{margin:0 0 8px;font-size:18px}
+.grid{display:grid;grid-template-columns:420px 1fr;gap:24px;align-items:start}
+.card{background:#f5f5f5;padding:22px;border-radius:12px}
+.form-table{display:table;width:100%}
+.form-row{display:table-row}
+.form-label,.form-input{display:table-cell;vertical-align:middle;padding:6px 8px}
+.form-label{text-align:left;width:48%;color:var(--muted);font-size:13px;font-weight:bold;padding-right:14px}
+.form-input input,.form-input select{width:100%;padding:11px 12px;border-radius:8px;border:1px solid #ccc;background:#fff;font-size:13px;box-sizing:border-box}
+.form-input select{background-color:var(--dropdown-bg)}
+button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:none;padding:10px 14px;border-radius:10px;color:#fff;font-weight:600;cursor:pointer}
+.result{padding:16px;border-radius:10px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.05);display:flex;flex-direction:column;justify-content:space-between;min-height:120px}
+.score{font-size:36px;font-weight:700;color:var(--accent);margin-top:auto;padding-top:12px}
+.table-card{background:#fff;padding:16px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}
+th,td{text-align:center;padding:12px 10px;border-bottom:1px solid #e5e5e5}
+th{color:var(--muted);font-weight:700}
+.help{font-size:13px;color:var(--muted);margin-top:8px;font-style:italic}
+textarea{width:100%;height:160px;padding:12px;border-radius:10px;border:1px solid #ccc;font-size:13px;box-sizing:border-box;font-family:monospace;resize:vertical}
+canvas{display:block;width:100%;height:320px;background:#fff;border-radius:10px;border:1px solid #e5e5e5}
+footer{margin-top:40px;text-align:center;font-size:12px;color:#777;font-style:italic}
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>Reduced-Form Bond Pricer</h1>
+<p class="help">Reduced-form risky bond pricing model using hazard rates, survival probabilities, recovery assumptions, and discounted expected cash flows.</p>
+<div class="grid">
+<section class="card">
+<h2 style="margin-top:0">Bond Inputs</h2>
+<div class="form-table">
+<div class="form-row"><div class="form-label">Face Value</div><div class="form-input"><input id="face" type="number" value="100"></div></div>
+<div class="form-row"><div class="form-label">Coupon Rate (%)</div><div class="form-input"><input id="coupon" type="number" value="5"></div></div>
+<div class="form-row"><div class="form-label">Maturity (Years)</div><div class="form-input"><input id="maturity" type="number" value="5"></div></div>
+<div class="form-row"><div class="form-label">Coupon Frequency</div><div class="form-input"><select id="frequency"><option value="1">Annual</option><option value="2" selected>Semi-Annual</option><option value="4">Quarterly</option><option value="12">Monthly</option></select></div></div>
+<div class="form-row"><div class="form-label">Risk-Free Rate (%)</div><div class="form-input"><input id="riskfree" type="number" value="3"></div></div>
+<div class="form-row"><div class="form-label">Credit Spread (%)</div><div class="form-input"><input id="spread" type="number" value="2"></div></div>
+<div class="form-row"><div class="form-label">Recovery Rate (%)</div><div class="form-input"><input id="recovery" type="number" value="40"></div></div>
+</div>
+<div style="margin-top:18px"><button onclick="computeBond()" style="width:100%">Compute Analytics</button></div>
+</section>
+<section class="card">
+<div style="display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:16px">
+<div class="result"><div>Bond Price</div><div id="price" class="score">-</div></div>
+<div class="result"><div>Yield</div><div id="yield" class="score">-</div></div>
+<div class="result"><div>Hazard Rate λ</div><div id="lambda" class="score">-</div></div>
+<div class="result"><div>Annual PD</div><div id="annualpd" class="score">-</div></div>
+<div class="result"><div>Cumulative PD</div><div id="cumpd" class="score">-</div></div>
+<div class="result"><div>Expected Loss</div><div id="el" class="score">-</div></div>
+</div>
+<div class="table-card" style="margin-top:24px">
+<h2>Cash Flow Analytics</h2>
+<table>
+<thead><tr><th>Period</th><th>Time</th><th>Survival</th><th>Default</th><th>Cum PD</th><th>DF</th><th>PV</th></tr></thead>
+<tbody id="tableBody"></tbody>
+</table>
+</div>
+</section>
+</div>
+<div class="card" style="margin-top:20px">
+<h2>Portfolio Analytics</h2>
+<p class="help">Paste one bond per line using: Face,Coupon,Maturity,Frequency,RiskFree,Spread,Recovery</p>
+<textarea id="portfolioInput"></textarea>
+<div style="margin-top:12px"><button onclick="computePortfolio()">Compute Portfolio Metrics</button></div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:18px">
+<div class="result"><div>Total Notional</div><div id="portfolioNotional" class="score">-</div></div>
+<div class="result"><div>Portfolio Price</div><div id="portfolioPrice" class="score">-</div></div>
+<div class="result"><div>Weighted Annual PD</div><div id="portfolioPD" class="score">-</div></div>
+<div class="result"><div>Weighted Cumulative PD</div><div id="portfolioCumPD" class="score">-</div></div>
+<div class="result"><div>Weighted Expected Loss</div><div id="portfolioEL" class="score">-</div></div>
+</div>
+<div class="table-card" style="margin-top:24px">
+<h2>Portfolio Breakdown</h2>
+<table>
+<thead><tr><th>Bond</th><th>Face</th><th>Coupon</th><th>Maturity</th><th>Spread</th><th>Recovery</th><th>Annual PD</th><th>Expected Loss</th></tr></thead>
+<tbody id="portfolioTable"></tbody>
+</table>
+</div>
+<div class="card" style="margin-top:20px;background:#fff">
+<h2 style="margin-top:0">Portfolio Stress Test</h2>
+<div class="form-table" style="max-width:420px"><div class="form-row"><div class="form-label">Annual PD Stress (+%)</div><div class="form-input"><input id="stressPD" type="number" value="1" step="0.1" oninput="computePortfolio()"></div></div></div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:18px">
+<div class="result"><div>Trade Notional</div><div id="stressedNotional" class="score">-</div></div>
+<div class="result"><div>Stressed Portfolio Price</div><div id="stressedPrice" class="score">-</div></div>
+<div class="result"><div>Stressed Weighted Annual PD</div><div id="stressedPD" class="score">-</div></div>
+<div class="result"><div>Stressed Weighted Cum PD</div><div id="stressedCumPD" class="score">-</div></div>
+<div class="result"><div>Stressed Expected Loss</div><div id="stressedEL" class="score">-</div></div>
+</div>
+<div class="table-card" style="margin-top:24px;width:100%;box-sizing:border-box">
+<h2>Stress Expected Loss Sensitivity</h2>
+<canvas id="stressChart"></canvas>
+<p class="help">Chart shows portfolio expected loss sensitivity across annual PD stresses ranging from -10% to +10%.</p>
+</div>
+</div>
+</div>
+<script>
+function computeSingleBond(F,couponRate,maturity,frequency,rf,spread,recovery){
+const dt=1/frequency;
+const periods=Math.max(Math.round(maturity*frequency),1);
+const coupon=(F*couponRate)/frequency;
+const lambda=spread/Math.max(1-recovery,.0001);
+const annualPD=1-Math.exp(-lambda);
+let cumulativePD=0;
+let price=0;
+for(let i=1;i<=periods;i++){
+const t=i*dt;
+const survival=Math.exp(-lambda*t);
+const prevSurvival=Math.exp(-lambda*(t-dt));
+const defaultProb=Math.max(prevSurvival-survival,0);
+cumulativePD=1-survival;
+const discount=Math.exp(-rf*t);
+let cf=coupon;
+if(i===periods) cf+=F;
+const expectedCF=cf*survival;
+const recoveryCF=F*recovery*defaultProb;
+const pv=(expectedCF+recoveryCF)*discount;
+price+=pv;
+}
+const expectedLoss=cumulativePD*(1-recovery)*F;
+return{price,lambda,annualPD,cumulativePD,expectedLoss};
+}
+function parseBondLine(line){
+const raw=line.split(',').map(x=>x.trim());
+if(raw.length<7) return null;
+const F=parseFloat(raw[0]);
+let coupon=parseFloat(raw[1]); if(coupon<=1) coupon*=100;
+const maturity=parseFloat(raw[2]);
+let frequency=1;
+const ft=raw[3].toLowerCase();
+if(ft==='semi-annual'||ft==='semiannual') frequency=2;
+else if(ft==='quarterly') frequency=4;
+else if(ft==='monthly') frequency=12;
+else if(ft==='annual') frequency=1;
+else frequency=parseFloat(raw[3]);
+let rf=parseFloat(raw[4]); if(rf<=1) rf*=100;
+let spread=parseFloat(raw[5]); if(spread<=1) spread*=100;
+let recovery=parseFloat(raw[6]); if(recovery<=1) recovery*=100;
+return{F,coupon,maturity,frequency,rf,spread,recovery};
+}
+function computePortfolio(){
+const raw=document.getElementById('portfolioInput').value.trim();
+if(!raw) return;
+const lines=raw.split('\n');
+const stressInput=parseFloat(document.getElementById('stressPD').value||0);
+const stressPD=stressInput/100;
+let totalNotional=0,totalPrice=0,weightedPD=0,weightedCumPD=0,weightedEL=0;
+let stressedPrice=0,stressedPD=0,stressedCumPD=0,stressedEL=0;
+const table=document.getElementById('portfolioTable');
+table.innerHTML='';
+lines.forEach((line,index)=>{
+const b=parseBondLine(line);
+if(!b) return;
+const result=computeSingleBond(b.F,b.coupon/100,b.maturity,b.frequency,b.rf/100,b.spread/100,b.recovery/100);
+totalNotional+=b.F;
+weightedPD+=result.annualPD*b.F;
+weightedCumPD+=result.cumulativePD*b.F;
+weightedEL+=result.expectedLoss;
+totalPrice+=result.price;
+const stressedAnnualPD=Math.min(result.annualPD+stressPD,.999);
+const stressedLambda=-Math.log(1-stressedAnnualPD);
+const stressedCum=1-Math.exp(-stressedLambda*b.maturity);
+const stressedBondEL=stressedCum*(1-b.recovery/100)*b.F;
+stressedPD+=stressedAnnualPD*b.F;
+stressedCumPD+=stressedCum*b.F;
+stressedEL+=stressedBondEL;
+stressedPrice+=result.price*(1-(stressedCum-result.cumulativePD));
+table.innerHTML+=`<tr><td>${index+1}</td><td>${b.F.toLocaleString()}</td><td>${b.coupon.toFixed(2)}%</td><td>${b.maturity.toFixed(1)}</td><td>${b.spread.toFixed(2)}%</td><td>${b.recovery.toFixed(0)}%</td><td>${(result.annualPD*100).toFixed(2)}%</td><td>${Math.round(result.expectedLoss).toLocaleString()}</td></tr>`;
+});
+weightedPD/=totalNotional;
+weightedCumPD/=totalNotional;
+stressedPD/=totalNotional;
+stressedCumPD/=totalNotional;
+document.getElementById('portfolioNotional').innerText=totalNotional.toLocaleString();
+document.getElementById('portfolioPrice').innerText=((totalPrice/totalNotional)*100).toFixed(2)+'%';
+document.getElementById('portfolioPD').innerText=(weightedPD*100).toFixed(2)+'%';
+document.getElementById('portfolioCumPD').innerText=(weightedCumPD*100).toFixed(2)+'%';
+document.getElementById('portfolioEL').innerText=Math.round(weightedEL).toLocaleString();
+document.getElementById('stressedNotional').innerText=totalNotional.toLocaleString();
+document.getElementById('stressedPrice').innerText=((stressedPrice/totalNotional)*100).toFixed(2)+'%';
+document.getElementById('stressedPD').innerText=(stressedPD*100).toFixed(2)+'%';
+document.getElementById('stressedCumPD').innerText=(stressedCumPD*100).toFixed(2)+'%';
+document.getElementById('stressedEL').innerText=Math.round(stressedEL).toLocaleString();
+drawStressChart(lines,totalNotional,stressInput);
+}
+function drawStressChart(lines,totalNotional,selectedStress){
+const canvas=document.getElementById('stressChart');
+canvas.width=canvas.parentElement.clientWidth-40;
+canvas.height=320;
+const ctx=canvas.getContext('2d');
+ctx.clearRect(0,0,canvas.width,canvas.height);
+const expectedLosses=[];
+const stressMin = selectedStress - 10;
+const stressMax = selectedStress + 10;
+
+for(let s=stressMin;s<=stressMax;s++){
+let portfolioEL=0;
+lines.forEach(line=>{
+const b=parseBondLine(line);
+if(!b) return;
+const result=computeSingleBond(b.F,b.coupon/100,b.maturity,b.frequency,b.rf/100,b.spread/100,b.recovery/100);
+const stressedAnnualPD=Math.min(result.annualPD+s/100,.999);
+const stressedLambda=-Math.log(1-stressedAnnualPD);
+const stressedCum=1-Math.exp(-stressedLambda*b.maturity);
+portfolioEL+=stressedCum*(1-b.recovery/100)*b.F;
+});
+expectedLosses.push(portfolioEL);
+}
+const padding=60;
+const chartWidth=canvas.width-padding*2;
+const chartHeight=canvas.height-padding*2;
+const minLoss=Math.min(...expectedLosses);
+const maxLoss=Math.max(...expectedLosses);
+ctx.strokeStyle='#ccc';
+ctx.beginPath();
+ctx.moveTo(padding,padding);
+ctx.lineTo(padding,canvas.height-padding);
+ctx.lineTo(canvas.width-padding,canvas.height-padding);
+ctx.stroke();
+ctx.strokeStyle='#7c3aed';
+ctx.lineWidth=3;
+ctx.beginPath();
+expectedLosses.forEach((loss,index)=>{
+const x=padding+(index/(expectedLosses.length-1))*chartWidth;
+const y=canvas.height-padding-((loss-minLoss)/(maxLoss-minLoss||1))*chartHeight;
+if(index===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+});
+ctx.stroke();
+const selectedX=padding+((selectedStress-stressMin)/(stressMax-stressMin))*chartWidth;
+ctx.strokeStyle='#dc2626';
+ctx.setLineDash([6,6]);
+ctx.beginPath();
+ctx.moveTo(selectedX,padding);
+ctx.lineTo(selectedX,canvas.height-padding);
+ctx.stroke();
+ctx.setLineDash([]);
+ctx.font='12px Arial';
+for(let i=stressMin;i<=stressMax;i+=5){
+const x=padding+((i-stressMin)/(stressMax-stressMin))*chartWidth;
+ctx.fillText(i+'%',x-10,canvas.height-padding+20);
+}
+ctx.fillText(Math.round(maxLoss).toLocaleString(),10,padding+5);
+ctx.fillText(Math.round(minLoss).toLocaleString(),10,canvas.height-padding);
+const baseIndex=10;
+const selectedIndex=Math.round(selectedStress-stressMin);
+const baseValue=expectedLosses[baseIndex]||0;
+const stressedValue=expectedLosses[selectedIndex]||0;
+const zeroStressX = padding + ((0 - stressMin) / (stressMax - stressMin)) * chartWidth;
+ctx.fillStyle='#16a34a';
+ctx.beginPath();
+const baseY = canvas.height-padding-((baseValue-minLoss)/(maxLoss-minLoss||1))*chartHeight;
+ctx.arc(zeroStressX,baseY,5,0,Math.PI*2);
+ctx.fill();
+const baseLabelX = zeroStressX - 90;
+const baseLabelY = baseY - 18;
+
+ctx.fillStyle='rgba(255,255,255,0.9)';
+ctx.fillRect(baseLabelX - 6, baseLabelY - 12, 110, 18);
+
+ctx.fillStyle='#16a34a';
+ctx.fillText('Base EL: ' + Math.round(baseValue).toLocaleString(), baseLabelX, baseLabelY);
+const selectedY=canvas.height-padding-((stressedValue-minLoss)/(maxLoss-minLoss||1))*chartHeight;
+ctx.fillStyle='#dc2626';
+const stressLabelX = selectedX + 14;
+const stressLabelY = selectedY - 26;
+
+ctx.fillStyle='rgba(255,255,255,0.9)';
+ctx.fillRect(stressLabelX - 6, stressLabelY - 12, 145, 18);
+
+ctx.fillStyle='#dc2626';
+ctx.fillText('Stressed EL: ' + Math.round(stressedValue).toLocaleString(), stressLabelX, stressLabelY);
+ctx.beginPath();
+ctx.arc(selectedX,selectedY,5,0,Math.PI*2);
+ctx.fill();
+}
+function computeBond(){
+const F=Math.max(parseFloat(document.getElementById('face').value)||0,0);
+const couponRate=(parseFloat(document.getElementById('coupon').value)||0)/100;
+const maturity=Math.max(parseFloat(document.getElementById('maturity').value)||0,0);
+const frequency=Math.max(parseInt(document.getElementById('frequency').value)||1,1);
+const rf=(parseFloat(document.getElementById('riskfree').value)||0)/100;
+const spread=(parseFloat(document.getElementById('spread').value)||0)/100;
+const recovery=Math.min(Math.max((parseFloat(document.getElementById('recovery').value)||0)/100,0),.99);
+const dt=1/frequency;
+const periods=Math.max(Math.round(maturity*frequency),1);
+const coupon=(F*couponRate)/frequency;
+const lambda=spread/Math.max(1-recovery,.0001);
+const annualPD=1-Math.exp(-lambda);
+let cumulativePD=0;
+let price=0;
+const tableBody=document.getElementById('tableBody');
+tableBody.innerHTML='';
+for(let i=1;i<=periods;i++){
+const t=i*dt;
+const survival=Math.exp(-lambda*t);
+const prevSurvival=Math.exp(-lambda*(t-dt));
+const defaultProb=Math.max(prevSurvival-survival,0);
+cumulativePD=1-survival;
+const discount=Math.exp(-rf*t);
+let cf=coupon;
+if(i===periods) cf+=F;
+const expectedCF=cf*survival;
+const recoveryCF=F*recovery*defaultProb;
+const pv=(expectedCF+recoveryCF)*discount;
+price+=pv;
+tableBody.innerHTML+=`<tr><td>${i}</td><td>${t.toFixed(2)}</td><td>${(survival*100).toFixed(2)}%</td><td>${(defaultProb*100).toFixed(2)}%</td><td>${(cumulativePD*100).toFixed(2)}%</td><td>${discount.toFixed(4)}</td><td>${pv.toFixed(2)}</td></tr>`;
+}
+const expectedLoss=cumulativePD*(1-recovery)*F;
+document.getElementById('price').innerText=price.toFixed(2);
+document.getElementById('yield').innerText=((rf+spread)*100).toFixed(2)+'%';
+document.getElementById('lambda').innerText=lambda.toFixed(4);
+document.getElementById('annualpd').innerText=(annualPD*100).toFixed(2)+'%';
+document.getElementById('cumpd').innerText=(cumulativePD*100).toFixed(2)+'%';
+document.getElementById('el').innerText=expectedLoss.toFixed(2);
+}
+window.onload=computeBond;
+  </script>
+  <div class="card" style="margin-top:24px;background:#ffffff">
+<h2 style="margin-top:0">Model Definitions & Formulas</h2>
+
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;font-size:14px;color:#444">
+
+<div>
+<h3>Hazard Rate & Default Metrics</h3>
+<p><strong>Hazard Rate (λ)</strong></p>
+<p>λ = Spread / (1 − Recovery)</p>
+
+<p><strong>Marginal / Period Default Probability</strong></p>
+<p>Default(t) = Survival(t−1) − Survival(t)</p>
+<p>= e<sup>−λ(t−1)</sup> − e<sup>−λt</sup></p>
+
+<p><strong>Annualized Default Probability</strong></p>
+<p>Annual PD = 1 − e<sup>−λ</sup></p>
+
+<p><strong>Cumulative Probability of Default</strong></p>
+<p>Cumulative PD = 1 − e<sup>−λt</sup></p>
+
+<p><strong>Survival Probability</strong></p>
+<p>Survival(t) = e<sup>−λt</sup></p>
+</div>
+
+<div>
+<h3>Valuation Framework</h3>
+<p><strong>Discount Factor</strong></p>
+<p>DF(t) = e<sup>−rt</sup></p>
+
+<p><strong>Expected Cash Flow</strong></p>
+<p>Expected CF = Coupon × Survival Probability</p>
+
+<p><strong>Recovery Cash Flow</strong></p>
+<p>Recovery CF = Face × Recovery × Default Probability</p>
+
+<p><strong>Present Value</strong></p>
+<p>PV = (Expected CF + Recovery CF) × DF</p>
+
+<p><strong>Expected Loss</strong></p>
+<p>EL = PD × LGD × EAD</p>
+<p>where LGD = 1 − Recovery</p>
+</div>
+
+</div>
+</div>
+
+<footer style="margin:40px auto 20px;max-width:920px;text-align:center;font-size:12px;color:#777;font-style:italic;">
+    © Quantik.org. All rights reserved. This model, including its code and associated intellectual property, is the exclusive property of Quantik.org and may not be copied, distributed, or replicated without prior written consent. Use of this calculator implies acceptance of these terms.
+  </footer>
+</body>
+</html>
